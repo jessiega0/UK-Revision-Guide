@@ -132,6 +132,10 @@
   --weight-chip: var(--hn-75);
   --weight-badge: var(--hn-95);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --floating-action-edge: 22px;
+  --floating-action-gap: 10px;
+  --floating-action-size: 48px;
+  --floating-quiz-width: 106px;
 }
 
 * {
@@ -1759,7 +1763,11 @@ details.image-sources[open]::details-content {
 
 .floating-revision-nav {
   position: fixed;
-  right: 238px;
+  right: calc(
+    var(--floating-action-edge) + var(--floating-quiz-width) +
+    var(--floating-action-gap) + var(--floating-action-gap) + var(--floating-action-gap) +
+    var(--floating-action-size) + var(--floating-action-size)
+  );
   bottom: 22px;
   z-index: 39;
   display: inline-flex;
@@ -1951,12 +1959,15 @@ details.image-sources[open]::details-content {
 }
 
 .floating-search-button {
-  right: 122px;
+  right: calc(
+    var(--floating-action-edge) + var(--floating-quiz-width) + var(--floating-action-gap)
+  );
 }
 
 .floating-quiz-link {
-  right: 22px;
-  min-width: 90px;
+  right: var(--floating-action-edge);
+  width: var(--floating-quiz-width);
+  min-width: var(--floating-quiz-width);
   padding: 0 14px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
@@ -1968,7 +1979,10 @@ details.image-sources[open]::details-content {
 }
 
 .floating-upload-button {
-  right: 180px;
+  right: calc(
+    var(--floating-action-edge) + var(--floating-quiz-width) +
+    var(--floating-action-gap) + var(--floating-action-gap) + var(--floating-action-size)
+  );
   width: 48px;
   padding: 0;
   border-radius: 50%;
@@ -2155,6 +2169,10 @@ details.image-sources[open]::details-content {
 }
 
 @media (max-width: 620px) {
+  :root {
+    --floating-action-edge: 16px;
+  }
+
   .page-header,
   main,
   footer {
@@ -2253,17 +2271,14 @@ details.image-sources[open]::details-content {
   }
 
   .floating-search-button {
-    right: 116px;
     bottom: 16px;
   }
 
   .floating-upload-button {
-    right: 174px;
     bottom: 16px;
   }
 
   .floating-revision-nav {
-    right: 232px;
     bottom: 16px;
     max-width: calc(100vw - 32px);
     min-height: 48px;
@@ -2275,9 +2290,7 @@ details.image-sources[open]::details-content {
   }
 
   .floating-quiz-link {
-    right: 16px;
     bottom: 16px;
-    min-width: 90px;
   }
 
   .floating-revision-count {
@@ -2307,6 +2320,13 @@ details.image-sources[open]::details-content {
 }
 
 @media (max-width: 423px) {
+  :root {
+    --floating-action-edge: 12px;
+    --floating-action-gap: 8px;
+    --floating-action-size: 42px;
+    --floating-quiz-width: 90px;
+  }
+
   body.geist-compact-title-version .header-title .title-line {
     white-space: nowrap;
   }
@@ -2343,23 +2363,12 @@ details.image-sources[open]::details-content {
     width: 42px;
   }
 
-  .floating-upload-button {
-    right: 154px;
-  }
-
-  .floating-search-button {
-    right: 104px;
-  }
-
   .floating-quiz-link {
-    right: 12px;
-    min-width: 82px;
     padding: 0 10px;
     font-size: 0.78rem;
   }
 
   .floating-revision-nav {
-    right: 206px;
     bottom: 12px;
     min-height: 42px;
     max-width: calc(100vw - 24px);
