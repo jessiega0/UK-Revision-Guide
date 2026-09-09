@@ -3,7 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Life in the UK Revision Guide - Geist Pixel Title</title>
+  <title>Life in the UK Revision Guide</title>
+  <meta name="description" content="An offline-friendly Life in the UK revision guide with searchable cards, focus mode, and CSV revision highlighting.">
+  <meta property="og:title" content="Life in the UK Revision Guide">
+  <meta property="og:description" content="Search, focus, and highlight the Life in the UK questions you need to revise.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://jessiega0.github.io/UK-Revision-Guide/">
+  <meta property="og:image" content="https://jessiega0.github.io/UK-Revision-Guide/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Life in the UK Revision Guide with illustrated study cards and collapsed revision topics">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Life in the UK Revision Guide">
+  <meta name="twitter:description" content="Search, focus, and highlight the Life in the UK questions you need to revise.">
+  <meta name="twitter:image" content="https://jessiega0.github.io/UK-Revision-Guide/assets/social-preview.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="font-geist-pixel-version compact-search-version geist-compact-title-version">
@@ -3073,13 +3086,6 @@
       }
     }
 
-    const stopWords = new Set([
-      "the", "and", "for", "you", "your", "are", "was", "were", "what", "which", "when", "where", "who",
-      "why", "how", "does", "did", "with", "from", "that", "this", "into", "have", "has", "their", "there",
-      "correct", "answer", "incorrect", "explanation", "true", "false", "select", "all", "question", "name",
-      "can", "could", "would", "should", "about", "after", "before", "during", "following"
-    ]);
-
     function normalizeText(text) {
       return text
         .toLowerCase()
@@ -3087,12 +3093,6 @@
         .replace(/[^a-z0-9£]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
-    }
-
-    function tokenize(text) {
-      return normalizeText(text)
-        .split(" ")
-        .filter((token) => token.length > 2 && !stopWords.has(token));
     }
 
     function parseDelimitedRows(text, delimiter = ",") {
@@ -3142,72 +3142,168 @@
       return options.sort((a, b) => b.score - a.score)[0]?.rows || [];
     }
 
-    function extractQuestionCandidates(text) {
+    const csvQuestionHeaders = new Set(["question", "prompt", "query", "incorrect question", "question text"]);
+    const csvCorrectAnswerHeaders = new Set(["correct answer", "correct answers", "correct answer s", "expected answer"]);
+    const nonDistinctiveAnswers = new Set(["true", "false", "yes", "no"]);
+    const matchingStopWords = new Set([
+      "a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "did", "do", "does", "for",
+      "from", "had", "has", "have", "how", "in", "into", "is", "it", "of", "on", "or", "that", "the",
+      "their", "them", "then", "there", "these", "they", "this", "those", "to", "was", "were", "what",
+      "when", "where", "which", "who", "whose", "why", "with"
+    ]);
+
+    function canonicalMatchingToken(token) {
+      if (/^\d+$/.test(token)) return token;
+      return token
+        .replace(/(ising|izing|ised|ized|ises|izes|ise|ize)$/, "is")
+        .replace(/ies$/, "y")
+        .replace(/ing$/, "")
+        .replace(/ed$/, "")
+        .replace(/s$/, "");
+    }
+
+    function matchingTokens(text) {
+      const tokens = normalizeText(text)
+        .split(" ")
+        .filter((token) => token && !matchingStopWords.has(token))
+        .map(canonicalMatchingToken)
+        .filter((token) => token.length > 1 || /^\d+$/.test(token));
+      return Array.from(new Set(tokens));
+    }
+
+    function tokenSimilarity(firstText, secondText) {
+      const first = matchingTokens(firstText);
+      const second = matchingTokens(secondText);
+      if (!first.length || !second.length) return 0;
+
+      const secondSet = new Set(second);
+      const overlap = first.filter((token) => secondSet.has(token)).length;
+      const smallerCoverage = overlap / Math.min(first.length, second.length);
+      const largerCoverage = overlap / Math.max(first.length, second.length);
+      return smallerCoverage * 0.7 + largerCoverage * 0.3;
+    }
+
+    function conceptContainment(firstText, secondText) {
+      const first = matchingTokens(firstText);
+      const second = matchingTokens(secondText);
+      if (!first.length || !second.length) return 0;
+
+      const secondSet = new Set(second);
+      const overlap = first.filter((token) => secondSet.has(token)).length;
+      return overlap / Math.min(first.length, second.length);
+    }
+
+    function extractRevisionCandidates(text) {
       const rows = parseFlexibleRows(text);
       if (!rows.length) return [];
 
-      const headerTerms = ["question", "prompt", "query", "incorrect question", "question text"];
       const headers = rows[0].map((cell) => normalizeText(cell));
       const questionColumns = headers.reduce((indexes, header, index) => {
-        if (headerTerms.some((term) => header.includes(term))) indexes.push(index);
+        if (csvQuestionHeaders.has(header)) indexes.push(index);
+        return indexes;
+      }, []);
+      const correctAnswerColumns = headers.reduce((indexes, header, index) => {
+        if (csvCorrectAnswerHeaders.has(header)) indexes.push(index);
         return indexes;
       }, []);
       const hasHeader = questionColumns.length > 0;
-      const candidates = new Set();
+      const candidates = new Map();
 
-      rows.slice(hasHeader ? 1 : 0).forEach((row) => {
-        const preferredCells = questionColumns.map((index) => row[index]).filter(Boolean);
-        const cells = preferredCells.length ? [...preferredCells, ...row] : row;
+      const addCandidate = (questionText, correctAnswerText = "") => {
+        const question = normalizeText(questionText || "");
+        const correctAnswer = normalizeText(correctAnswerText || "");
+        if (question.length < 12) return;
+        candidates.set(`${question}\u0000${correctAnswer}`, { question, correctAnswer });
+      };
 
-        cells.forEach((cell) => {
-          const candidate = normalizeText(cell);
-          if (candidate.length >= 12) candidates.add(candidate);
+      if (hasHeader) {
+        rows.slice(1).forEach((row) => {
+          const correctAnswer = correctAnswerColumns
+            .map((index) => row[index])
+            .find((cell) => cell?.trim()) || "";
+          questionColumns.forEach((index) => {
+            addCandidate(row[index], correctAnswer);
+          });
         });
+      } else {
+        rows.forEach((row) => {
+          const nonEmptyCells = row.filter((cell) => cell.trim());
+          if (nonEmptyCells.length !== 1) return;
+          addCandidate(nonEmptyCells[0]);
+        });
+      }
 
-        if (row.length > 1) {
-          const joinedRow = normalizeText(row.join(" "));
-          if (joinedRow.length >= 12) candidates.add(joinedRow);
-        }
+      return Array.from(candidates.values());
+    }
+
+    function getCardRevisionText(card) {
+      return {
+        question: normalizeText(card.querySelector(".question")?.textContent || ""),
+        answer: normalizeText(card.querySelector(".answer")?.textContent || "")
+      };
+    }
+
+    function buildCardAnswerFrequencies() {
+      const frequencies = new Map();
+      searchableCards.forEach((card) => {
+        const answer = getCardRevisionText(card).answer;
+        if (answer) frequencies.set(answer, (frequencies.get(answer) || 0) + 1);
       });
-
-      return Array.from(candidates);
+      return frequencies;
     }
 
-    function tokensAreSimilar(first, second) {
-      if (first === second) return true;
-      return first.length >= 5 && second.length >= 5 && first.slice(0, 5) === second.slice(0, 5);
-    }
+    function scoreRevisionCandidate(card, candidate, answerFrequencies) {
+      const { question, answer } = getCardRevisionText(card);
+      if (!question) return null;
+      if (question === candidate.question) return { card, score: 2, exact: true };
 
-    function textMatchesQuestion(cardText, candidateText) {
-      if (candidateText.length < 12) return false;
-      if (cardText.includes(candidateText) || candidateText.includes(cardText)) return true;
-
-      const candidateTokens = Array.from(new Set(tokenize(candidateText)));
-      const cardTokens = Array.from(new Set(tokenize(cardText)));
-      if (candidateTokens.length < 2 || cardTokens.length < 2) return false;
-
-      const matchingTokens = candidateTokens.filter((candidateToken) =>
-        cardTokens.some((cardToken) => tokensAreSimilar(candidateToken, cardToken))
-      ).length;
-      if (matchingTokens === 2) {
-        return candidateTokens.length === 2 && cardTokens.length <= 3;
+      const questionSimilarity = tokenSimilarity(candidate.question, question);
+      if (!candidate.correctAnswer) {
+        return questionSimilarity >= 0.95
+          ? { card, score: questionSimilarity, exact: false }
+          : null;
       }
 
-      const candidateCoverage = matchingTokens / candidateTokens.length;
-      const cardCoverage = matchingTokens / cardTokens.length;
-      return matchingTokens >= 3 && Math.max(candidateCoverage, cardCoverage) >= 0.62;
+      const answerSimilarity = tokenSimilarity(candidate.correctAnswer, answer);
+      const answerIsBoolean = nonDistinctiveAnswers.has(candidate.correctAnswer);
+      if (answerIsBoolean) {
+        return answer === candidate.correctAnswer && questionSimilarity >= 0.96
+          ? { card, score: 1 + questionSimilarity * 0.8, exact: false }
+          : null;
+      }
+
+      const answerFrequency = answerFrequencies.get(candidate.correctAnswer) || 0;
+      const questionThreshold = answerFrequency > 3 ? 0.88 : 0.72;
+      if (answerSimilarity >= 0.92 && questionSimilarity >= questionThreshold) {
+        return { card, score: 1 + questionSimilarity * 0.7 + answerSimilarity * 0.2, exact: false };
+      }
+
+      const cardAnswerIsDistinctive = answer.length >= 4
+        && !nonDistinctiveAnswers.has(answer)
+        && (answerFrequencies.get(answer) || 0) <= 3;
+      if (cardAnswerIsDistinctive) {
+        const questionToAnswer = conceptContainment(candidate.question, answer);
+        const answerToQuestion = conceptContainment(candidate.correctAnswer, question);
+        if (questionToAnswer === 1 && answerToQuestion >= 0.9) {
+          return { card, score: 1 + (questionToAnswer + answerToQuestion) * 0.35, exact: false };
+        }
+      }
+
+      return null;
     }
 
-    function cardMatchesCsvCandidate(card, candidateText) {
-      const question = normalizeText(card.querySelector(".question")?.textContent || "");
-      const heading = normalizeText(card.querySelector("h3")?.textContent || "");
-      const primaryText = normalizeText(`${heading} ${question}`);
-      if (primaryText && textMatchesQuestion(primaryText, candidateText)) return true;
+    function findUniqueRevisionCard(candidate, answerFrequencies) {
+      const matches = searchableCards
+        .map((card) => scoreRevisionCandidate(card, candidate, answerFrequencies))
+        .filter(Boolean)
+        .sort((first, second) => second.score - first.score);
 
-      if (!question && !heading) {
-        return textMatchesQuestion(normalizeText(card.textContent), candidateText);
+      if (!matches.length) return null;
+      if (matches[0].exact) {
+        return matches[1]?.exact ? null : matches[0].card;
       }
-      return false;
+      if (matches[1] && matches[0].score - matches[1].score < 0.12) return null;
+      return matches[0].card;
     }
 
     function clearRevisionFlags() {
@@ -3355,19 +3451,24 @@
 
     async function flagCardsFromCsvFiles(files) {
       clearRevisionFlags();
-      const questionCandidates = new Set();
+      const revisionCandidates = new Map();
 
       for (const file of files) {
         const text = await file.text();
-        extractQuestionCandidates(text).forEach((candidate) => questionCandidates.add(candidate));
+        extractRevisionCandidates(text).forEach((candidate) => {
+          revisionCandidates.set(`${candidate.question}\u0000${candidate.correctAnswer}`, candidate);
+        });
       }
 
-      const candidates = Array.from(questionCandidates);
+      const answerFrequencies = buildCardAnswerFrequencies();
+      const matchedCards = new Set();
+      revisionCandidates.forEach((candidate) => {
+        const matchedCard = findUniqueRevisionCard(candidate, answerFrequencies);
+        if (matchedCard) matchedCards.add(matchedCard);
+      });
+
       searchableCards.forEach((card) => {
-        const shouldFlag = candidates.some((candidate) =>
-          cardMatchesCsvCandidate(card, candidate)
-        );
-        card.classList.toggle("needs-revision", shouldFlag);
+        card.classList.toggle("needs-revision", matchedCards.has(card));
       });
 
       collapsibleBlocks.forEach((block) => {

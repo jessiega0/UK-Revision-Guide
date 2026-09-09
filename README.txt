@@ -21,7 +21,19 @@ You can download or export question files from your Life in the UK source websit
 2. Choose one or more files containing the questions you want to revise.
 3. The guide compares the question text with its revision cards and marks matching cards with a red pill.
 
-The importer accepts comma-separated CSV files as well as tab-, semicolon-, and pipe-separated files. It can recognise common question columns such as Question, Question Text, Prompt, and Query. A plain text file containing one question per line can also be used. Columns may appear in a different order, and small wording differences are allowed.
+For the most reliable results, upload the CSV downloaded from the Life in the UK test website. Other CSV formats may not identify every question correctly.
+
+The recommended table format is:
+
+Question Number: Optional reference number.
+Question: Required. The question to match against the revision cards.
+Your Answer(s): Optional and ignored by the matcher.
+Correct Answer(s): Recommended. Used to confirm the correct card when question wording differs.
+Explanation: Optional and ignored by the matcher.
+
+The importer accepts comma-separated CSV files as well as tab-, semicolon-, and pipe-separated files. It recognises question columns named Question, Question Text, Incorrect Question, Prompt, or Query. It recognises correct-answer columns named Correct Answer, Correct Answers, Correct Answer(s), or Expected Answer. A plain text file containing one question per line can also be used, but only exact or extremely close question matches are possible without a correct-answer column.
+
+Matching first looks for the same question after ignoring capitalisation, punctuation, and repeated spaces. When wording differs, the correct answer can confirm one uniquely strong question match. Reversed question-and-answer wording is supported when both sides clearly agree. True, False, Yes, and No never provide positive matching evidence, and uncertain or ambiguous matches are not flagged.
 
 CSV files are processed locally in your browser and are not uploaded to a server by this guide.
 
